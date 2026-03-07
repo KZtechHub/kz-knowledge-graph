@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KZ · Knowledge Graph OS v3</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,400&family=Scheherazade+New:wght@400;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+/* ═══════════════════════════
+   DESIGN TOKENS
+═══════════════════════════ */
+:root {
+  --bg:       #06090d;
+  --s1:       #0a0f18;
+  --s2:       #0e1520;
+  --s3:       #121d2b;
+  --s4:       #172436;
+
+  --amber:    #d4922a;
+  --amber2:   #e8ae4a;
+  --amber3:   #f5c96a;
+  --amber-d:  rgba(212,146,42,.13);
+  --amber-g:  rgba(212,146,42,.28);
+
+  --sky:      #3aa8e0;
+  --sky-d:    rgba(58,168,224,.12);
+  --green:    #28d49a;
+  --green-d:  rgba(40,212,154,.12);
+  --purple:   #a87ef5;
+  --purple-d: rgba(168,126,245,.12);
+  --red:      #e86060;
+  --red-d:    rgba(232,96,96,.12);
+  --teal:     #28c8d8;
+  --teal-d:   rgba(40,200,216,.12);
+
+  --ink:      #e2d8c8;
+  --ink2:     rgba(226,216,200,.6);
+  --ink3:     rgba(226,216,200,.3);
+  --ink4:     rgba(226,216,200,.1);
+  --line:     rgba(226,216,200,.06);
+  --line2:    rgba(212,146,42,.18);
+
+  --mono:     'DM Mono', monospace;
+  --head:     'Syne', sans-serif;
+  --arab:     'Scheherazade New', serif;
+  --ease:     cubic-bezier(.4,0,.2,1);
+  --panel-w:  340px;
+  --nav-h:    52px;
+  --hub-h:    44px;
+}
+
+*,*::before,*::after { box-sizing:border-box; margin:0; padding:0; }
+html,body { height:100%; overflow:hidden; }
+body {
+  font-family: var(--mono);
+  background: var(--bg);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+}
+body::after {
+  content:'';
+  position:fixed; inset:0;
+  background-image:
+    linear-gradient(rgba(212,146,42,.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(212,146,42,.022) 1px, transparent 1px);
+  background-size:30px 30px;
+  pointer-events:none; z-index:0;
+}
+
+/* scrollbars */
+::-webkit-scrollbar { width:4px; height:4px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:var(--line2); border-radius:2px; }
+
+/* ═══════════════════════════
+   NAV
+═══════════════════════════ */
+.nav {
+  height: var(--nav-h); min-height: var(--nav-h);
+  position: sticky; top:0; z-index:100;
+  display:flex; align-items:center;
+  padding: 0 18px; gap:14px;
+  background: rgba(6,9,13,.96);
+  border-bottom: 1px solid var(--line2);
+  backdrop-filter: blur(20px);
+}
+.nav-brand { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.kz-mark {
+  width:34px; height:34px; border-radius:8px;
+  background: var(--amber); color:#000;
+  font-family:var(--head); font-weight:800; font-size:14px;
+  display:flex; align-items:center; justify-content:center;
+  box-shadow: 0 0 16px var(--amber-g);
+}
+.brand-main { font-family:var(--head); font-weight:700; font-size:13px; letter-spacing:.8px; }
+.brand-sub  { font-family:var(--arab); font-size:11px; color:var(--amber); margin-top:1px; }
+
+.nav-pipe {
+  display:flex; align-items:center; gap:3px;
+  flex:1; justify-content:center; overflow-x:auto;
+}
+.pipe-step {
+  font-size:10px; font-weight:500; letter-spacing:.3px;
+  color:var(--ink3); padding:3px 9px; border-radius:4px;
+  white-space:nowrap; transition:all .3s;
+}
+.pipe-step.active { color:var(--amber); background:var(--amber-d); }
+.pipe-step.done   { color:var(--green); }
+.pipe-arrow { color:var(--ink3); font-size:10px; }
+
+.nav-right { display:flex; align-items:center; gap:7px; flex-shrink:0; margin-left:auto; }
+.nav-stat {
+  font-size:10px; color:var(--ink3);
+  padding:3px 9px; border:1px solid var(--ink4); border-radius:5px;
+}
+.nav-stat b { color:var(--amber); }
+.live-dot {
+  width:7px; height:7px; border-radius:50%;
+  background:var(--green); box-shadow:0 0 8px var(--green);
+  animation:blink 2s infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
+
+/* ═══════════════════════════
+   WORKSPACE
+═══════════════════════════ */
+.workspace {
+  flex:1; display:grid;
+  grid-template-columns: var(--panel-w) 1fr var(--panel-w);
+  overflow:hidden;
+  position:relative; z-index:1;
+}
+
+/* ═══════════════════════════
+   LEFT PANEL — INGEST
+═══════════════════════════ */
+.panel-left {
+  background:var(--s1);
+  border-right:1px solid var(--line);
+  display:flex; flex-direction:column;
+  overflow:hidden;
+}
+.panel-hdr {
+  padding:12px 15px 10px;
+  border-bottom:1px solid var(--line);
+  flex-shrink:0;
+  font-size:10px; font-weight:600;
+  letter-spacing:1.8px; text-transform:uppercase;
+  color:var(--ink3);
+  display:flex; align-items:center; gap:7px;
+}
+.panel-hdr-accent { color:var(--amber); }
+.panel-body {
+  flex:1; overflow-y:auto;
+  padding:14px;
+}
+
+.ilabel {
+  font-size:10px; font-weight:500; letter-spacing:1px;
+  color:var(--ink3); text-transform:uppercase;
+  margin-bottom:6px; display:flex; align-items:center; gap:5px;
+}
+.itextarea {
+  width:100%; background:var(--s2);
+  border:1px solid var(--ink4); border-radius:7px;
+  padding:10px 12px; color:var(--ink);
+  font-family:var(--mono); font-size:11.5px;
+  resize:none; height:108px; outline:none;
+  transition:border-color .2s; line-height:1.6;
+}
+.itextarea:focus { border-color:var(--amber); }
+.itextarea::placeholder { color:var(--ink3); }
+
+.tag-row { display:flex; gap:5px; flex-wrap:wrap; margin:8px 0; }
+.mtag {
+  font-size:10px; padding:2px 9px; border-radius:4px;
+  cursor:pointer; border:1px solid; transition:all .15s;
+  font-weight:500; letter-spacing:.3px; font-family:var(--mono);
+}
+.mt-tech   { color:var(--sky);    border-color:rgba(58,168,224,.3); }
+.mt-tech.sel,.mt-tech:hover     { background:var(--sky-d);    border-color:var(--sky);    }
+.mt-trust  { color:var(--green);  border-color:rgba(40,212,154,.3); }
+.mt-trust.sel,.mt-trust:hover   { background:var(--green-d);  border-color:var(--green);  }
+.mt-transform{ color:var(--amber);border-color:rgba(212,146,42,.3); }
+.mt-transform.sel,.mt-transform:hover{ background:var(--amber-d);border-color:var(--amber); }
+.mt-insight{ color:var(--purple); border-color:rgba(168,126,245,.3); }
+.mt-insight.sel,.mt-insight:hover { background:var(--purple-d);border-color:var(--purple); }
+
+.ibtn {
+  width:100%; padding:8px; border:none; border-radius:7px;
+  background:var(--amber); color:#000;
+  font-family:var(--head); font-weight:700; font-size:11px; letter-spacing:.8px;
+  cursor:pointer; transition:all .18s var(--ease);
+  display:flex; align-items:center; justify-content:center; gap:6px;
+  margin-top:8px;
+}
+.ibtn:hover { background:var(--amber2); box-shadow:0 0 20px var(--amber-g); }
+.ibtn:disabled { opacity:.45; cursor:not-allowed; }
+
+.divider { height:1px; background:var(--line); margin:13px 0; }
+
+.nodelist-hdr {
+  font-size:10px; letter-spacing:1px; text-transform:uppercase;
+  color:var(--ink3); margin-bottom:7px;
+  display:flex; align-items:center; justify-content:space-between;
+}
+.nitem {
+  display:flex; align-items:flex-start; gap:7px;
+  padding:7px 9px; border-radius:7px;
+  cursor:pointer; transition:all .15s;
+  border:1px solid transparent; margin-bottom:3px;
+}
+.nitem:hover { background:var(--s2); border-color:var(--line); }
+.nitem.sel   { background:var(--amber-d); border-color:var(--line2); }
+.ndot { width:7px; height:7px; border-radius:50%; flex-shrink:0; margin-top:3px; }
+.nitem-title { font-size:11px; font-weight:500; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.nitem-meta  { font-size:9px; color:var(--ink3); margin-top:1px; }
+
+/* ═══════════════════════════
+   CENTER GRAPH
+═══════════════════════════ */
+.graph-center {
+  position:relative; overflow:hidden; background:var(--bg);
+}
+.star-field { position:absolute; inset:0; overflow:hidden; pointer-events:none; }
+#graphSvg { width:100%; height:100%; cursor:grab; }
+#graphSvg:active { cursor:grabbing; }
+.node circle { stroke-width:1.8; cursor:pointer; }
+.node text {
+  fill:var(--ink); font-family:var(--mono); font-size:10.5px;
+  pointer-events:none;
+  text-shadow:0 1px 4px rgba(0,0,0,.95),0 0 8px rgba(0,0,0,.8);
+}
+.link { stroke-opacity:.4; stroke-width:1.5; }
+
+.graph-empty {
+  position:absolute; inset:0;
+  display:flex; flex-direction:column;
+  align-items:center; justify-content:center; gap:10px;
+  pointer-events:none;
+}
+.graph-empty-icon { font-size:44px; opacity:.25; }
+.graph-empty-txt  { font-size:12px; color:var(--ink3); text-align:center; max-width:240px; line-height:1.65; }
+
+.graph-toolbar {
+  position:absolute; bottom:14px; left:50%; transform:translateX(-50%);
+  display:flex; gap:5px;
+  background:rgba(6,9,13,.9); border:1px solid var(--line2);
+  border-radius:9px; padding:5px;
+  backdrop-filter:blur(16px);
+}
+.tb-btn {
+  padding:5px 12px; border-radius:6px;
+  background:transparent; border:none;
+  color:var(--ink3); font-family:var(--mono); font-size:11px;
+  cursor:pointer; transition:all .15s;
+}
+.tb-btn:hover { background:var(--s2); color:var(--ink); }
+.tb-btn.on    { background:var(--amber-d); color:var(--amber); }
+
+.graph-legend {
+  position:absolute; top:12px; left:12px;
+  background:rgba(6,9,13,.88); border:1px solid var(--line);
+  border-radius:7px; padding:9px 11px;
+  backdrop-filter:blur(16px);
+}
+.leg-row { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--ink3); margin-bottom:3px; }
+.leg-row:last-child { margin-bottom:0; }
+.leg-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+
+.pipe-indicator {
+  position:absolute; top:12px; right:12px;
+  background:rgba(6,9,13,.88); border:1px solid var(--line);
+  border-radius:7px; padding:9px 11px;
+  backdrop-filter:blur(16px);
+  font-size:10px; color:var(--ink3); max-width:170px;
+}
+.pi-title { color:var(--amber); font-weight:600; letter-spacing:.8px; margin-bottom:5px; }
+.pi-row   { display:flex; align-items:center; gap:5px; margin-bottom:2px; }
+.pidot    { width:5px; height:5px; border-radius:50%; background:var(--ink3); flex-shrink:0; }
+.pidot.done   { background:var(--green); box-shadow:0 0 4px var(--green); }
+.pidot.active { background:var(--amber); box-shadow:0 0 6px var(--amber); animation:blink 1s infinite; }
+
+/* ═══════════════════════════
+   RIGHT PANEL — NODE CARD
+═══════════════════════════ */
+.panel-right {
+  background:var(--s1);
+  border-left:1px solid var(--line);
+  display:flex; flex-direction:column;
+  overflow:hidden;
+}
+
+/* empty state */
+.node-empty {
+  flex:1; display:flex; flex-direction:column;
+  align-items:center; justify-content:center;
+  gap:9px; color:var(--ink3); font-size:11px;
+  text-align:center; padding:20px;
+}
+.node-empty-icon { font-size:30px; opacity:.2; }
+
+/* node card wrapper (replaces old detail-card) */
+.node-card-wrap {
+  display:none; flex-direction:column;
+  height:100%; overflow:hidden;
+}
+.node-card-wrap.visible { display:flex; animation:slideIn .28s var(--ease) both; }
+@keyframes slideIn { from{opacity:0;transform:translateX(10px)} to{opacity:1;transform:translateX(0)} }
+
+/* ── card header ── */
+.nc-header {
+  padding:14px 15px 10px;
+  border-bottom:1px solid var(--line);
+  flex-shrink:0;
+  background:var(--s2);
+  position:relative;
+}
+.nc-header::before {
+  content:'';
+  position:absolute; top:0; left:0; right:0; height:2px;
+  background:linear-gradient(90deg,var(--amber),var(--amber2),transparent 70%);
+}
+.nc-title-row { display:flex; align-items:flex-start; gap:8px; margin-bottom:6px; }
+.nc-glyph {
+  width:36px; height:36px; border-radius:8px; flex-shrink:0;
+  display:flex; align-items:center; justify-content:center;
+  font-size:17px; border:1px solid var(--ink4);
+}
+.nc-title {
+  font-family:var(--head); font-weight:800; font-size:14px;
+  color:var(--ink); line-height:1.25; flex:1; outline:none;
+}
+.nc-title[contenteditable="true"]:focus { border-bottom:1px dashed var(--amber); padding-bottom:1px; }
+.edit-btn {
+  width:24px; height:24px; border-radius:5px;
+  background:var(--s3); border:1px solid var(--ink4);
+  color:var(--ink3); font-size:11px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .15s; flex-shrink:0;
+}
+.edit-btn:hover { color:var(--amber); border-color:var(--amber); background:var(--amber-d); }
+.nc-meta { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+.cat-badge {
+  font-size:9px; font-weight:700; letter-spacing:1.2px;
+  text-transform:uppercase; padding:2px 7px;
+  border-radius:4px; border:1px solid;
+}
+.cat-tech      { color:var(--sky);    border-color:rgba(58,168,224,.35);  background:var(--sky-d);    }
+.cat-trust     { color:var(--green);  border-color:rgba(40,212,154,.35);  background:var(--green-d);  }
+.cat-transform { color:var(--amber);  border-color:rgba(212,146,42,.35);  background:var(--amber-d);  }
+.cat-insight   { color:var(--purple); border-color:rgba(168,126,245,.35); background:var(--purple-d); }
+.nc-meta-txt   { font-size:9px; color:var(--ink3); }
+
+/* ── card body (scrollable fields) ── */
+.nc-body { flex:1; overflow-y:auto; }
+
+.field {
+  padding:11px 15px;
+  border-bottom:1px solid var(--line);
+  display:grid; grid-template-columns:110px 1fr;
+  gap:8px; align-items:flex-start;
+  transition:background .12s;
+}
+.field:last-child { border-bottom:none; }
+.field:hover { background:rgba(255,255,255,.01); }
+.field-label {
+  font-size:9px; font-weight:600; letter-spacing:1.3px;
+  text-transform:uppercase; color:var(--ink3);
+  display:flex; align-items:center; gap:5px; padding-top:2px; flex-shrink:0;
+}
+.ficon { font-size:12px; flex-shrink:0; }
+.field-val { flex:1; min-width:0; }
+
+/* summary textarea */
+.f-textarea {
+  width:100%; background:transparent; border:none; outline:none;
+  font-family:var(--mono); font-size:11.5px; color:var(--ink2);
+  line-height:1.65; resize:none; padding:0;
+}
+.f-textarea:not([readonly]):focus {
+  color:var(--ink); background:var(--s2);
+  border-radius:5px; padding:6px 8px; margin:-6px -8px;
+  border:1px solid var(--amber); width:calc(100% + 16px);
+}
+
+/* topic badge */
+.topic-badge {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:3px 10px; border-radius:100px;
+  font-size:10px; font-weight:600; border:1px solid; cursor:pointer;
+}
+.topic-sel {
+  background:transparent; border:none; outline:none;
+  font-family:var(--mono); font-size:10px; font-weight:600;
+  cursor:pointer; padding:0;
+}
+.topic-sel option { background:var(--s3); color:var(--ink); }
+
+/* related nodes */
+.related-list { display:flex; gap:5px; flex-wrap:wrap; align-items:center; }
+.rnode {
+  display:flex; align-items:center; gap:4px;
+  padding:3px 8px; border-radius:5px; font-size:10px;
+  background:var(--s2); border:1px solid var(--ink4);
+  color:var(--ink2); cursor:pointer; transition:all .15s;
+}
+.rnode:hover { border-color:var(--sky); color:var(--sky); background:var(--sky-d); }
+.rdot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+.add-rel {
+  padding:3px 8px; border-radius:5px; font-size:10px;
+  color:var(--ink3); border:1px dashed var(--ink4);
+  cursor:pointer; background:transparent; font-family:var(--mono);
+  transition:all .15s;
+}
+.add-rel:hover { border-color:var(--green); color:var(--green); }
+
+/* leverage */
+.lev-wrap { display:flex; align-items:center; gap:10px; }
+.lev-num  { font-family:var(--head); font-weight:800; font-size:20px; color:var(--amber); min-width:22px; }
+.lev-track{ flex:1; height:5px; background:var(--s3); border-radius:3px; overflow:hidden; max-width:120px; }
+.lev-fill { height:100%; border-radius:3px; transition:width .4s var(--ease); }
+.lev-lbl  { font-size:9px; color:var(--ink3); letter-spacing:.5px; }
+.sc-btns  { display:flex; gap:2px; }
+.sc-btn {
+  width:20px; height:20px; border-radius:4px;
+  background:var(--s2); border:1px solid var(--ink4);
+  color:var(--ink3); font-size:11px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:all .15s; font-family:var(--mono);
+}
+.sc-btn:hover { background:var(--amber-d); color:var(--amber); border-color:var(--amber); }
+
+/* status */
+.status-wrap { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+.status-badge {
+  display:inline-flex; align-items:center; gap:5px;
+  padding:4px 11px; border-radius:100px; font-size:10px; font-weight:600;
+  border:1px solid; cursor:pointer; transition:all .18s; position:relative; overflow:hidden;
+}
+.status-badge::before { content:''; position:absolute; inset:0; background:currentColor; opacity:.07; }
+.sdot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+.sdot.pulse { animation:blink 2s infinite; box-shadow:0 0 5px currentColor; }
+.status-menu {
+  position:absolute; top:calc(100% + 5px); left:0;
+  background:var(--s2); border:1px solid var(--line2);
+  border-radius:8px; padding:4px; z-index:60; min-width:170px;
+  box-shadow:0 14px 40px rgba(0,0,0,.7);
+  display:none; flex-direction:column; gap:1px;
+}
+.status-menu.open { display:flex; animation:menuIn .15s var(--ease); }
+@keyframes menuIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:translateY(0)} }
+.sopt {
+  display:flex; align-items:center; gap:7px;
+  padding:6px 9px; border-radius:5px; font-size:10px;
+  cursor:pointer; transition:background .1s; color:var(--ink2);
+}
+.sopt:hover { background:var(--s3); }
+.sopt-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
+.sopt-desc { font-size:8.5px; color:var(--ink3); margin-left:auto; }
+
+/* status steps */
+.steps { display:flex; align-items:center; }
+.stp { display:flex; align-items:center; }
+.stp-dot { width:7px; height:7px; border-radius:50%; border:1.5px solid var(--ink3); transition:all .25s; }
+.stp-dot.done   { background:var(--green); border-color:var(--green); box-shadow:0 0 5px var(--green); }
+.stp-dot.active { background:var(--amber); border-color:var(--amber); box-shadow:0 0 7px var(--amber); animation:blink 2s infinite; }
+.stp-line { width:16px; height:1.5px; background:var(--ink4); }
+.stp-line.done { background:var(--green); }
+
+/* actions row */
+.actions-wrap { display:flex; gap:5px; flex-wrap:wrap; }
+.ab {
+  display:flex; align-items:center; gap:5px;
+  padding:6px 10px; border-radius:6px; font-family:var(--mono);
+  font-size:10px; font-weight:500; cursor:pointer;
+  transition:all .15s var(--ease); border:1px solid;
+  position:relative; overflow:hidden; letter-spacing:.3px;
+}
+.ab:hover { transform:translateY(-1px); box-shadow:0 5px 16px rgba(0,0,0,.35); }
+.ab::before { content:''; position:absolute; inset:0; background:currentColor; opacity:0; transition:opacity .15s; }
+.ab:hover::before { opacity:.07; }
+.ab-icon,.ab-txt { position:relative; z-index:1; }
+.ab-kbd { font-size:8.5px; opacity:.45; position:relative; z-index:1; margin-left:2px; }
+.ab-r { color:var(--sky);    border-color:rgba(58,168,224,.3);  background:var(--sky-d);    }
+.ab-r:hover { border-color:var(--sky);    }
+.ab-l { color:var(--purple); border-color:rgba(168,126,245,.3); background:var(--purple-d); }
+.ab-l:hover { border-color:var(--purple); }
+.ab-a { color:var(--green);  border-color:rgba(40,212,154,.3);  background:var(--green-d);  }
+.ab-a:hover { border-color:var(--green);  }
+.ab-c { color:var(--amber);  border-color:rgba(212,146,42,.3);  background:var(--amber-d);  }
+.ab-c:hover { border-color:var(--amber);  }
+.ab-t { color:var(--red);    border-color:rgba(232,96,96,.3);   background:var(--red-d);    }
+.ab-t:hover { border-color:var(--red);    }
+
+/* card footer */
+.nc-footer {
+  padding:9px 15px;
+  background:var(--s2); border-top:1px solid var(--line);
+  display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  flex-shrink:0;
+}
+.nc-fmeta { font-size:9px; color:var(--ink3); display:flex; align-items:center; gap:4px; }
+.nc-fmeta span { color:var(--ink2); }
+.nc-fbtns { margin-left:auto; display:flex; gap:4px; }
+.nc-fbtn {
+  padding:4px 9px; border-radius:5px; font-family:var(--mono);
+  font-size:9px; cursor:pointer; transition:all .15s;
+  background:var(--s3); border:1px solid var(--ink4); color:var(--ink3);
+}
+.nc-fbtn:hover { background:var(--s4); color:var(--ink); }
+.nc-fbtn.del   { color:var(--red); border-color:rgba(232,96,96,.2); }
+.nc-fbtn.del:hover { background:var(--red-d); }
+
+/* ── AI output panel (inside right panel, below card) ── */
+.ai-out-wrap {
+  flex-shrink:0; max-height:220px; overflow-y:auto;
+  border-top:1px solid rgba(40,212,154,.2);
+  background:rgba(40,212,154,.04);
+  display:none;
+}
+.ai-out-wrap.open { display:block; animation:slideIn .25s var(--ease); }
+.ai-out-hdr {
+  padding:9px 14px;
+  border-bottom:1px solid rgba(40,212,154,.1);
+  display:flex; align-items:center; gap:8px;
+  font-size:10px; font-weight:600; color:var(--green); letter-spacing:.8px;
+  flex-shrink:0;
+}
+.ai-out-close {
+  margin-left:auto; cursor:pointer; width:20px; height:20px;
+  border-radius:4px; display:flex; align-items:center; justify-content:center;
+  background:var(--s2); border:1px solid var(--line);
+  color:var(--ink3); font-size:14px; transition:all .15s;
+}
+.ai-out-close:hover { color:var(--ink); }
+.ai-loading {
+  display:flex; align-items:center; gap:5px;
+  font-size:10px; color:var(--ink3); padding:12px 14px;
+}
+.ai-dots span {
+  display:inline-block; width:5px; height:5px;
+  background:var(--green); border-radius:50%;
+  animation:db 1.1s infinite; margin:0 1px;
+}
+.ai-dots span:nth-child(2) { animation-delay:.18s; }
+.ai-dots span:nth-child(3) { animation-delay:.36s; }
+@keyframes db { 0%,80%,100%{transform:scale(.5);opacity:.35} 40%{transform:scale(1);opacity:1} }
+.ai-text {
+  font-size:11px; color:var(--ink2); line-height:1.7;
+  white-space:pre-wrap; font-family:var(--mono);
+  padding:12px 14px; display:none;
+}
+
+/* ── NEW NODE MODAL ── */
+.modal-bg {
+  position:fixed; inset:0; z-index:200;
+  background:rgba(6,9,13,.85); backdrop-filter:blur(10px);
+  display:flex; align-items:center; justify-content:center; padding:20px;
+  opacity:0; pointer-events:none; transition:opacity .22s;
+}
+.modal-bg.open { opacity:1; pointer-events:all; }
+.modal {
+  background:var(--s2); border:1px solid var(--line2);
+  border-radius:13px; width:100%; max-width:500px;
+  max-height:88vh; overflow-y:auto; padding:26px;
+  transform:translateY(14px) scale(.98); transition:transform .22s var(--ease);
+}
+.modal-bg.open .modal { transform:translateY(0) scale(1); }
+.modal-title { font-family:var(--head); font-weight:800; font-size:16px; margin-bottom:18px; }
+.fg { margin-bottom:14px; }
+.flbl { font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--ink3); font-weight:600; margin-bottom:5px; display:block; }
+.finput,.ftextarea,.fselect {
+  width:100%; background:var(--s3); border:1px solid var(--ink4);
+  border-radius:7px; padding:9px 11px; color:var(--ink);
+  font-family:var(--mono); font-size:12px; outline:none; transition:border-color .15s;
+}
+.finput:focus,.ftextarea:focus,.fselect:focus { border-color:var(--amber); }
+.ftextarea { resize:vertical; min-height:72px; line-height:1.6; }
+.fselect { cursor:pointer; }
+.modal-btns { display:flex; gap:7px; margin-top:18px; }
+.mbtn {
+  display:flex; align-items:center; gap:5px;
+  padding:7px 14px; border-radius:6px; font-family:var(--mono);
+  font-size:11px; font-weight:500; cursor:pointer;
+  transition:all .15s; border:none;
+}
+.mbtn-gold { background:var(--amber); color:#000; font-weight:700; }
+.mbtn-gold:hover { background:var(--amber2); }
+.mbtn-ghost { background:var(--s3); color:var(--ink2); border:1px solid var(--ink4); }
+.mbtn-ghost:hover { background:var(--s4); }
+
+/* ═══════════════════════════
+   ACTION HUB FOOTER
+═══════════════════════════ */
+.hub {
+  height:var(--hub-h); min-height:var(--hub-h);
+  background:var(--s1); border-top:1px solid var(--line2);
+  display:flex; align-items:center; padding:0 14px; gap:5px;
+  overflow-x:auto; z-index:10; position:relative;
+}
+.hub-lbl { font-size:9px; color:var(--ink3); flex-shrink:0; margin-right:4px; letter-spacing:1px; text-transform:uppercase; }
+.hbtn {
+  display:flex; align-items:center; gap:4px;
+  padding:5px 11px; border-radius:5px;
+  border:1px solid var(--ink4); background:transparent;
+  color:var(--ink3); font-family:var(--mono); font-size:10px;
+  cursor:pointer; transition:all .15s; white-space:nowrap;
+}
+.hbtn:hover { background:var(--s2); color:var(--ink); border-color:var(--line2); }
+.hbtn.on    { background:var(--amber-d); color:var(--amber); border-color:var(--line2); }
+.hdiv { width:1px; height:18px; background:var(--line); flex-shrink:0; }
+.hub-fb {
+  margin-left:auto; font-size:9px; color:var(--ink3);
+  display:flex; align-items:center; gap:6px; flex-shrink:0;
+}
+.fdb { width:5px; height:5px; border-radius:50%; background:var(--green); animation:blink 2s infinite; }
+
+/* ═══════════════════════════
+   TOAST + SPINNER
+═══════════════════════════ */
+.toast {
+  position:fixed; bottom:54px; left:50%;
+  transform:translateX(-50%) translateY(50px);
+  background:var(--s3); border:1px solid var(--line2);
+  border-radius:8px; padding:9px 16px;
+  font-size:11px; color:var(--ink);
+  z-index:300; transition:transform .22s var(--ease);
+  display:flex; align-items:center; gap:7px;
+  box-shadow:0 10px 36px rgba(0,0,0,.6);
+}
+.toast.show { transform:translateX(-50%) translateY(0); }
+.spin {
+  display:inline-block; width:11px; height:11px;
+  border:1.5px solid rgba(255,255,255,.18);
+  border-top-color:currentColor; border-radius:50%;
+  animation:sp .7s linear infinite;
+}
+@keyframes sp { to{transform:rotate(360deg)} }
+
+@media (max-width:900px) {
+  :root { --panel-w:260px; }
+  .steps { display:none; }
+}
+@media (max-width:640px) {
+  .workspace { grid-template-columns:1fr; }
+  .panel-left,.panel-right { display:none; }
+}
+
+/* ── SETTINGS MODAL EXTRAS ── */
+.mode-card {
+  padding:14px 12px; border-radius:9px; border:1px solid var(--ink4);
+  background:var(--s2); cursor:pointer; text-align:center;
+  transition:all .15s;
+}
+.mode-card:hover { border-color:var(--amber); background:var(--amber-d); }
+.mode-card.mode-active { border-color:var(--amber); background:var(--amber-d); box-shadow:0 0 14px var(--amber-d); }
+.callout-settings {
+  padding:10px 12px; border-radius:7px; font-size:10.5px;
+  line-height:1.6; margin:10px 0; border:1px solid;
+}
+.callout-settings.tip  { background:var(--sky-d);   border-color:rgba(58,168,224,.3);  color:var(--ink2); }
+.callout-settings.note { background:var(--amber-d); border-color:var(--line2); color:var(--ink2); }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════════════ NAV ═══════════════════════════ -->
+<nav class="nav">
+  <div class="nav-brand">
+    <div class="kz-mark">KZ</div>
+    <div>
+      <div class="brand-main">KNOWLEDGE GRAPH OS</div>
+      <div class="brand-sub">کیمیار ظاہری</div>
+    </div>
+  </div>
+  <div class="nav-pipe">
+    <span class="pipe-step done"  id="ps-ingest">① INGEST</span><span class="pipe-arrow">→</span>
+    <span class="pipe-step"       id="ps-embed" >② EMBED</span><span class="pipe-arrow">→</span>
+    <span class="pipe-step"       id="ps-graph" >③ GRAPH</span><span class="pipe-arrow">→</span>
+    <span class="pipe-step"       id="ps-explore">④ EXPLORE</span><span class="pipe-arrow">→</span>
+    <span class="pipe-step"       id="ps-act"   >⑤ ACT</span><span class="pipe-arrow">→</span>
+    <span class="pipe-step"       id="ps-learn" >⑥ LEARN</span>
+  </div>
+  <div class="nav-right">
+    <div class="live-dot"></div>
+    <div class="nav-stat">Nodes: <b id="statNodes">0</b></div>
+    <div class="nav-stat">Edges: <b id="statEdges">0</b></div>
+    <div class="nav-stat">Actions: <b id="statActions">0</b></div>
+    <button class="hbtn" onclick="openNewModal()" style="border-color:var(--amber-g);color:var(--amber)">+ Node</button>
+    <button class="hbtn" id="settingsBtn" onclick="openSettings()" title="API Settings" style="font-size:13px;padding:4px 10px">⚙</button>
+  </div>
+</nav>
+
+<!-- ═══════════════════════════ WORKSPACE ═══════════════════════════ -->
+<div class="workspace">
+
+  <!-- LEFT: INGEST -->
+  <div class="panel-left">
+    <div class="panel-hdr"><span class="panel-hdr-accent">↓</span> DATA INGEST</div>
+    <div class="panel-body">
+      <div class="ilabel">📄 Paste Text / Idea</div>
+      <textarea class="itextarea" id="ingestInput" placeholder="Paste any text — idea, article, chat, note. AI extracts concepts and builds graph nodes automatically..."></textarea>
+      <div class="ilabel" style="margin-top:10px">🏷 Force Tag</div>
+      <div class="tag-row">
+        <span class="mtag mt-tech"      onclick="toggleTag(this,'tech')">🔬 tech</span>
+        <span class="mtag mt-trust"     onclick="toggleTag(this,'trust')">🛡 trust</span>
+        <span class="mtag mt-transform" onclick="toggleTag(this,'transform')">🚀 transform</span>
+        <span class="mtag mt-insight"   onclick="toggleTag(this,'insight')">💡 insight</span>
+      </div>
+      <button class="ibtn" id="ingestBtn" onclick="processIngest()">
+        <span id="ingestBtnTxt">⚡ PROCESS → GRAPH</span>
+      </button>
+
+      <div class="divider"></div>
+      <div class="nodelist-hdr">
+        <span>NODES</span>
+        <span id="nodeCount" style="color:var(--amber)">0</span>
+      </div>
+      <div id="nodeList"></div>
+    </div>
+  </div>
+
+  <!-- CENTER: GRAPH -->
+  <div class="graph-center">
+    <div class="star-field" id="starField"></div>
+    <svg id="graphSvg">
+      <defs>
+        <filter id="glow"><feGaussianBlur stdDeviation="3" result="c"/><feMerge><feMergeNode in="c"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+        <marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+          <path d="M0,0 L0,6 L6,3 z" fill="rgba(212,146,42,.4)"/>
+        </marker>
+      </defs>
+    </svg>
+    <div class="graph-empty" id="graphEmpty">
+      <div class="graph-empty-icon">🕸</div>
+      <div class="graph-empty-txt">Your knowledge graph will appear here.<br><br>Paste text in the left panel or hit<br><strong style="color:var(--amber)">Load Seed Data</strong> to begin.</div>
+    </div>
+    <div class="graph-legend">
+      <div class="leg-row"><div class="leg-dot" style="background:var(--sky);box-shadow:0 0 5px var(--sky)"></div> Technology</div>
+      <div class="leg-row"><div class="leg-dot" style="background:var(--green);box-shadow:0 0 5px var(--green)"></div> Trust</div>
+      <div class="leg-row"><div class="leg-dot" style="background:var(--amber);box-shadow:0 0 5px var(--amber)"></div> Transform</div>
+      <div class="leg-row"><div class="leg-dot" style="background:var(--purple);box-shadow:0 0 5px var(--purple)"></div> Insight</div>
+    </div>
+    <div class="pipe-indicator">
+      <div class="pi-title">PIPELINE</div>
+      <div class="pi-row"><div class="pidot done" id="pi1"></div><span id="pi1t">Ingest ready</span></div>
+      <div class="pi-row"><div class="pidot" id="pi2"></div><span id="pi2t">Embedding</span></div>
+      <div class="pi-row"><div class="pidot" id="pi3"></div><span id="pi3t">Building graph</span></div>
+      <div class="pi-row"><div class="pidot" id="pi4"></div><span id="pi4t">Linking edges</span></div>
+      <div class="pi-row"><div class="pidot" id="pi5"></div><span id="pi5t">AI layer ready</span></div>
+    </div>
+    <div class="graph-toolbar">
+      <button class="tb-btn" onclick="resetZoom()">⊡ Fit</button>
+      <button class="tb-btn on" onclick="setLayout('force')" id="tbForce">⬤ Force</button>
+      <button class="tb-btn" onclick="setLayout('radial')" id="tbRadial">◎ Radial</button>
+      <button class="tb-btn" onclick="clearGraph()">🗑 Clear</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: NODE CARD -->
+  <div class="panel-right">
+    <div class="panel-hdr"><span class="panel-hdr-accent">◎</span> NODE DETAIL</div>
+
+    <!-- empty state -->
+    <div class="node-empty" id="nodeEmpty">
+      <div class="node-empty-icon">◎</div>
+      <span>Click any node on the graph to open its full detail card</span>
+    </div>
+
+    <!-- full node card -->
+    <div class="node-card-wrap" id="nodeCardWrap">
+
+      <!-- header -->
+      <div class="nc-header">
+        <div class="nc-title-row">
+          <div class="nc-glyph" id="ncGlyph">💡</div>
+          <div class="nc-title" id="ncTitle" contenteditable="false" spellcheck="false">Node Title</div>
+          <button class="edit-btn" id="ncEditBtn" onclick="toggleTitleEdit()" title="Edit">✎</button>
+        </div>
+        <div class="nc-meta" id="ncMeta"></div>
+      </div>
+
+      <!-- scrollable fields -->
+      <div class="nc-body">
+
+        <!-- IDEA SUMMARY -->
+        <div class="field">
+          <div class="field-label"><span class="ficon">💡</span>Summary</div>
+          <div class="field-val">
+            <textarea class="f-textarea" id="fSummary" readonly rows="3" placeholder="Describe the core idea..."></textarea>
+          </div>
+        </div>
+
+        <!-- TOPIC -->
+        <div class="field">
+          <div class="field-label"><span class="ficon">◉</span>Topic</div>
+          <div class="field-val"><div id="fTopicWrap"></div></div>
+        </div>
+
+        <!-- RELATED NODES -->
+        <div class="field">
+          <div class="field-label"><span class="ficon">⬡</span>Related</div>
+          <div class="field-val"><div class="related-list" id="fRelated"></div></div>
+        </div>
+
+        <!-- LEVERAGE SCORE -->
+        <div class="field">
+          <div class="field-label"><span class="ficon">⚡</span>Leverage</div>
+          <div class="field-val">
+            <div class="lev-wrap">
+              <div class="lev-num" id="fLevNum">3</div>
+              <div>
+                <div class="lev-track"><div class="lev-fill" id="fLevFill" style="width:60%"></div></div>
+                <div class="lev-lbl"  id="fLevLbl">MODERATE</div>
+              </div>
+              <div class="sc-btns">
+                <button class="sc-btn" onclick="adjustScore(-1)">−</button>
+                <button class="sc-btn" onclick="adjustScore(+1)">+</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- STATUS -->
+        <div class="field">
+          <div class="field-label"><span class="ficon">◈</span>Status</div>
+          <div class="field-val">
+            <div class="status-wrap">
+              <div style="position:relative" id="statusRing">
+                <div class="status-badge" id="fStatusBadge" onclick="toggleStatusMenu()">
+                  <div class="sdot pulse" id="fStatusDot"></div>
+                  <span id="fStatusTxt">Concept</span>
+                  <span style="font-size:8px;opacity:.4;margin-left:3px">▾</span>
+                </div>
+                <div class="status-menu" id="statusMenu"></div>
+              </div>
+              <div class="steps" id="fSteps"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ACTIONS -->
+        <div class="field" style="border-bottom:none">
+          <div class="field-label"><span class="ficon">▶</span>Actions</div>
+          <div class="field-val">
+            <div class="actions-wrap">
+              <button class="ab ab-r" onclick="runAction('research')"><span class="ab-icon">🔍</span><span class="ab-txt">Research</span><span class="ab-kbd">R</span></button>
+              <button class="ab ab-l" onclick="runAction('learn')"><span class="ab-icon">📚</span><span class="ab-txt">Learn</span><span class="ab-kbd">L</span></button>
+              <button class="ab ab-a" onclick="runAction('automate')"><span class="ab-icon">⚙</span><span class="ab-txt">Auto</span><span class="ab-kbd">A</span></button>
+              <button class="ab ab-c" onclick="runAction('content')"><span class="ab-icon">✍</span><span class="ab-txt">Content</span><span class="ab-kbd">C</span></button>
+              <button class="ab ab-t" onclick="runAction('track')"><span class="ab-icon">📊</span><span class="ab-txt">Track</span><span class="ab-kbd">T</span></button>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /nc-body -->
+
+      <!-- footer -->
+      <div class="nc-footer">
+        <div class="nc-fmeta">🕐 <span id="fCreated">—</span></div>
+        <div class="nc-fmeta">🔄 <span id="fUpdated">—</span></div>
+        <div class="nc-fmeta" id="fAiFlag" style="display:none">✦ <span style="color:var(--purple)">AI</span></div>
+        <div class="nc-fbtns">
+          <button class="nc-fbtn" onclick="duplicateActiveNode()">⧉ Dup</button>
+          <button class="nc-fbtn del" onclick="deleteActiveNode()">🗑 Del</button>
+        </div>
+      </div>
+
+      <!-- AI output (inside right panel) -->
+      <div class="ai-out-wrap" id="aiOutWrap">
+        <div class="ai-out-hdr">
+          <span id="aiOutLbl">● OUTPUT</span>
+          <div class="ai-out-close" onclick="closeAiOut()">×</div>
+        </div>
+        <div class="ai-loading" id="aiLoading"><span>Generating</span><span class="ai-dots"><span></span><span></span><span></span></span></div>
+        <div class="ai-text" id="aiText"></div>
+      </div>
+
+    </div><!-- /node-card-wrap -->
+  </div><!-- /panel-right -->
+
+</div><!-- /workspace -->
+
+<!-- HUB FOOTER -->
+<div class="hub">
+  <span class="hub-lbl">HUB:</span>
+  <button class="hbtn on" onclick="setHub(this,'all')">All</button>
+  <button class="hbtn" onclick="setHub(this,'research')">🔍 Research</button>
+  <button class="hbtn" onclick="setHub(this,'learn')">📚 Learn</button>
+  <button class="hbtn" onclick="setHub(this,'automate')">⚙ Auto</button>
+  <button class="hbtn" onclick="setHub(this,'content')">✍ Content</button>
+  <button class="hbtn" onclick="setHub(this,'track')">📊 Track</button>
+  <div class="hdiv"></div>
+  <button class="hbtn" onclick="exportGraph()">↗ Export</button>
+  <button class="hbtn" onclick="loadSeed()">🌱 Seed Data</button>
+  <div class="hub-fb">
+    <div class="fdb"></div>
+    <span id="feedbackMsg">Graph learning active</span>
+  </div>
+</div>
+
+<!-- NEW NODE MODAL -->
+<div class="modal-bg" id="newModal" onclick="closeMBg(event)">
+  <div class="modal">
+    <div class="modal-title">✦ New Knowledge Node</div>
+    <div class="fg"><label class="flbl">Title *</label><input class="finput" id="mTitle" placeholder="e.g. DeFi Education in Kano Markets"></div>
+    <div class="fg"><label class="flbl">Idea Summary</label><textarea class="ftextarea" id="mSummary" placeholder="Describe the core idea in 2–4 sentences..."></textarea></div>
+    <div class="fg">
+      <label class="flbl">Topic</label>
+      <select class="fselect" id="mTopic">
+        <option value="tech">🔬 Technology</option>
+        <option value="trust">🛡 Trust</option>
+        <option value="transform">🚀 Transformation</option>
+        <option value="insight">💡 Insight</option>
+      </select>
+    </div>
+    <div class="fg"><label class="flbl">Leverage Score (1–5)</label><input class="finput" id="mScore" type="number" min="1" max="5" value="3"></div>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-gold" onclick="createManualNode()">✦ Create Node</button>
+      <button class="mbtn mbtn-ghost" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- SETTINGS MODAL -->
+<div class="modal-bg" id="settingsModal" onclick="closeSettingsBg(event)">
+  <div class="modal" style="max-width:460px">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:20px">
+      <span style="font-size:20px">⚙</span>
+      <div class="modal-title" style="margin-bottom:0">API Settings</div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:20px">
+      <div id="modePersonal" class="mode-card mode-active" onclick="setApiMode('personal')">
+        <div style="font-size:16px;margin-bottom:4px">🔑</div>
+        <div style="font-family:var(--head);font-weight:700;font-size:11px">Personal</div>
+        <div style="font-size:9px;color:var(--ink3);margin-top:3px">Your own API key.<br>Private access.</div>
+      </div>
+      <div id="modeCommunity" class="mode-card" onclick="setApiMode('community')">
+        <div style="font-size:16px;margin-bottom:4px">🌐</div>
+        <div style="font-family:var(--head);font-weight:700;font-size:11px">Community</div>
+        <div style="font-size:9px;color:var(--ink3);margin-top:3px">Shared proxy server.<br>Public deployment.</div>
+      </div>
+    </div>
+    <div id="sPersonalFields">
+      <div class="fg">
+        <label class="flbl">Anthropic API Key</label>
+        <input class="finput" id="sApiKey" type="password" placeholder="sk-ant-api03-..." autocomplete="off">
+      </div>
+      <div class="callout-settings tip">🔒 Stored only in this browser. Never shared with anyone.</div>
+    </div>
+    <div id="sCommunityFields" style="display:none">
+      <div class="fg">
+        <label class="flbl">Proxy Server URL</label>
+        <input class="finput" id="sProxyUrl" type="url" placeholder="https://kz-proxy-production.up.railway.app">
+      </div>
+      <div class="callout-settings note">🌐 AI requests will route through this proxy. No API key needed on your end.</div>
+    </div>
+    <div id="sStatus" style="display:none;margin:12px 0;padding:9px 12px;border-radius:7px;font-size:11px"></div>
+    <div class="modal-btns">
+      <button class="mbtn mbtn-gold" onclick="saveSettings()">✓ Save</button>
+      <button class="mbtn mbtn-ghost" onclick="testConnection()"><span id="testBtnTxt">↗ Test</span></button>
+      <button class="mbtn mbtn-ghost" onclick="closeSettings()">Cancel</button>
+    </div>
+    <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--ink4)">
+      <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--ink3);font-weight:600;margin-bottom:7px">Connection Status</div>
+      <div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink3)">
+        <div id="connDot" style="width:7px;height:7px;border-radius:50%;background:var(--ink3);flex-shrink:0"></div>
+        <span id="connMsg">Not configured — click ⚙ to set up</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════ JAVASCRIPT ═══════════════════════════ -->
+<script>
+/* ════════════════════════════════════════
+   CONSTANTS & DATA
+════════════════════════════════════════ */
+const TOPICS = {
+  tech:      { label:'Technology', icon:'🔬', color:'var(--sky)',    cls:'cat-tech'      },
+  trust:     { label:'Trust',      icon:'🛡',  color:'var(--green)',  cls:'cat-trust'     },
+  transform: { label:'Transform',  icon:'🚀',  color:'var(--amber)',  cls:'cat-transform' },
+  insight:   { label:'Insight',    icon:'💡',  color:'var(--purple)', cls:'cat-insight'   },
+};
+const CAT_COLORS = { tech:'#3aa8e0', trust:'#28d49a', transform:'#d4922a', insight:'#a87ef5' };
+const LEVERAGE_LABELS = { 1:'LOW', 2:'LOW-MED', 3:'MODERATE', 4:'HIGH IMPACT', 5:'MAXIMUM' };
+const LEVERAGE_COLORS = { 1:'var(--red)', 2:'var(--amber)', 3:'var(--amber2)', 4:'var(--amber)', 5:'var(--green)' };
+const STATUSES = [
+  { id:'concept',   label:'Concept',   color:'var(--sky)',    desc:'Early idea'        },
+  { id:'research',  label:'Research',  color:'var(--purple)', desc:'Being explored'    },
+  { id:'prototype', label:'Prototype', color:'var(--amber)',  desc:'Being built'       },
+  { id:'launch',    label:'Launch',    color:'var(--green)',  desc:'Ready to ship'     },
+  { id:'growth',    label:'Growth',    color:'var(--teal)',   desc:'Actively scaling'  },
+];
+const ACTION_COLORS  = { research:'var(--sky)', learn:'var(--purple)', automate:'var(--green)', content:'var(--amber)', track:'var(--red)' };
+const ACTION_LABELS  = { research:'RESEARCH', learn:'LEARN MODULE', automate:'AUTOMATION', content:'CONTENT', track:'TRACKING' };
+
+const ACTION_PROMPTS = {
+  research: n => `You are the KZ knowledge hub AI, deeply versed in Northern Nigeria's digital economy, Arewa culture, Web3, and community development. Research this knowledge node thoroughly:\n\nNode: "${n.title}"\nSummary: "${n.summary}"\nTopic: ${n.topic}\n\nProvide:\n1. Current state of this topic in Northern Nigeria / Arewa region\n2. 3 specific opportunities or gaps you identify\n3. Key players, projects, or examples to reference\n4. MATAKI (Next Step): One concrete action to advance this node\n\nBe specific to the Nigerian context.`,
+  learn:    n => `Create a concise, practical learning module for the KZ community:\n\nNode: "${n.title}"\nSummary: "${n.summary}"\n\nFormat:\n📖 CONCEPT: What is this in simple terms (use a Northern Nigerian analogy)\n🔑 KEY PRINCIPLES: 3 things to understand\n💼 PRACTICAL APPLICATION: How an Arewa entrepreneur can apply this today\n⚠️ WATCH OUT FOR: 1-2 common mistakes or scams\n\nHausa analogies welcome. Max 300 words.`,
+  automate: n => `Design an automation workflow for this KZ knowledge node:\n\nNode: "${n.title}"\nSummary: "${n.summary}"\n\nSuggest:\n1. TRIGGER: What event starts this automation\n2. STEPS: 3-5 automation steps (n8n, Claude API, Neo4j)\n3. OUTPUT: What gets produced automatically\n4. TOOLS NEEDED: Specific tech stack\n5. EFFORT: Estimated build time for a solo developer\n\nFocus on high-leverage automation saving 5+ hours/week.`,
+  content:  n => `Generate a content piece for Kimiyyar Zahiri brand:\n\nNode: "${n.title}"\nSummary: "${n.summary}"\nTopic: ${n.topic}\n\nCreate:\n🐦 TWITTER/X THREAD (5 tweets): Educational, bold, culturally grounded\n📝 LINKEDIN POST (100 words): Professional, insight-driven\n💬 WHATSAPP MESSAGE (50 words): Simple, shareable, Hausa/English blend\n\nBrand voice: Direct, warm, bold. Like a brilliant elder brother explaining tech over suya. Always end with #KimiyyarZahiri`,
+  track:    n => `Create a tracking framework for this KZ knowledge node:\n\nNode: "${n.title}"\nCurrent Status: ${n.status}\nLeverage Score: ${n.score}/5\n\nDefine:\n📊 SUCCESS METRICS: 3 specific, measurable KPIs\n📅 MILESTONES: 4 time-bound milestones (30/60/90/180 days)\n🚦 HEALTH INDICATORS: Signs this node is progressing vs stalling\n🔄 REVIEW CADENCE: How often to update and what triggers a status change\n\nSpecific to Northern Nigeria context and KZ's 18-month roadmap.`
+};
+
+/* ════════════════════════════════════════
+   STATE
+════════════════════════════════════════ */
+let graphData = JSON.parse(localStorage.getItem('kz_graph2') || '{"nodes":[],"links":[]}');
+let selectedId = null;
+let forceTag   = null;
+let actionCount = parseInt(localStorage.getItem('kz_ac2') || '0');
+let currentHub  = 'all';
+let titleEditing = false;
+let svg, g, sim;
+
+/* ════════════════════════════════════════
+   NODE DATA HELPERS
+════════════════════════════════════════ */
+function getNode(id) { return graphData.nodes.find(n => n.id === id); }
+function getActive() { return getNode(selectedId); }
+
+function saveGraph() { localStorage.setItem('kz_graph2', JSON.stringify(graphData)); }
+
+function enrichNode(n) {
+  // Ensure all node-component fields exist
+  if (!n.summary)    n.summary    = n.title || '';
+  if (!n.status)     n.status     = 'concept';
+  if (!n.score)      n.score      = n.weight || 3;
+  if (!n.related)    n.related    = [];
+  if (!n.createdAt)  n.createdAt  = new Date().toISOString();
+  if (!n.updatedAt)  n.updatedAt  = new Date().toISOString();
+  if (n.aiGenerated === undefined) n.aiGenerated = false;
+  // sync links to related array
+  const linked = graphData.links
+    .filter(l => (l.source === n.id || l.source?.id === n.id || l.target === n.id || l.target?.id === n.id))
+    .map(l => {
+      const sid = l.source?.id || l.source;
+      const tid = l.target?.id || l.target;
+      return sid === n.id ? tid : sid;
+    }).filter(Boolean);
+  linked.forEach(lid => { if (!n.related.includes(lid)) n.related.push(lid); });
+  return n;
+}
+
+/* ════════════════════════════════════════
+   STATS + PIPELINE UI
+════════════════════════════════════════ */
+function updateStats() {
+  document.getElementById('statNodes').textContent   = graphData.nodes.length;
+  document.getElementById('statEdges').textContent   = graphData.links.length;
+  document.getElementById('statActions').textContent = actionCount;
+  document.getElementById('nodeCount').textContent   = graphData.nodes.length;
+}
+
+function pipe(step, state) {
+  const el = document.getElementById('ps-' + step);
+  if (el) el.className = 'pipe-step ' + state;
+}
+function pi(n, state) {
+  const d = document.getElementById('pi'+n), t = document.getElementById('pi'+n+'t');
+  const labels = {1:'Ingest ready',2:'Semantic embedding',3:'Building graph',4:'Linking edges',5:'AI layer ready'};
+  if (d) { d.className = 'pidot ' + state; if(t) t.textContent = (state==='active'?'⟳ ':state==='done'?'✓ ':'') + labels[n]; }
+}
+
+function feedback(msg) {
+  document.getElementById('feedbackMsg').textContent = msg;
+  setTimeout(() => document.getElementById('feedbackMsg').textContent = 'Graph learning active', 5000);
+}
+
+/* ════════════════════════════════════════
+   NODE LIST (left panel)
+════════════════════════════════════════ */
+function renderNodeList() {
+  const list = document.getElementById('nodeList');
+  if (!graphData.nodes.length) {
+    list.innerHTML = '<div style="font-size:10px;color:var(--ink3);text-align:center;padding:18px 0">No nodes yet</div>';
+    return;
+  }
+  list.innerHTML = graphData.nodes.slice().reverse().map(n => {
+    enrichNode(n);
+    const c = CAT_COLORS[n.category] || CAT_COLORS.insight;
+    const links = graphData.links.filter(l => l.source===n.id||l.target===n.id||l.source?.id===n.id||l.target?.id===n.id).length;
+    return `<div class="nitem ${n.id===selectedId?'sel':''}" onclick="selectNode('${n.id}')">
+      <div class="ndot" style="background:${c};box-shadow:0 0 5px ${c}"></div>
+      <div>
+        <div class="nitem-title">${n.title}</div>
+        <div class="nitem-meta">${n.category}·${n.score||3}/5·${links} link${links!==1?'s':''}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+/* ════════════════════════════════════════
+   RENDER NODE CARD (right panel)
+════════════════════════════════════════ */
+function renderNodeCard(node) {
+  enrichNode(node);
+  const topic  = TOPICS[node.category] || TOPICS.insight;
+  const status = STATUSES.find(s => s.id === node.status) || STATUSES[0];
+  const stepIdx = STATUSES.findIndex(s => s.id === node.status);
+
+  document.getElementById('nodeEmpty').style.display = 'none';
+  document.getElementById('nodeCardWrap').classList.add('visible');
+
+  // Glyph
+  const glyph = document.getElementById('ncGlyph');
+  glyph.textContent = topic.icon;
+  glyph.style.background = `${CAT_COLORS[node.category]}18`;
+  glyph.style.borderColor = `${CAT_COLORS[node.category]}30`;
+
+  // Title
+  document.getElementById('ncTitle').textContent = node.title;
+
+  // Meta
+  document.getElementById('ncMeta').innerHTML = `
+    <span class="cat-badge ${topic.cls}">${topic.icon} ${topic.label}</span>
+    <span class="nc-meta-txt">⚡${node.score}/5</span>
+    <span class="nc-meta-txt">${node.related.length} link${node.related.length!==1?'s':''}</span>
+    <span class="nc-meta-txt" style="color:var(--ink3);font-size:9px">${node.id}</span>
+  `;
+
+  // Summary
+  document.getElementById('fSummary').value = node.summary || '';
+
+  // Topic selector
+  const tc = CAT_COLORS[node.category];
+  document.getElementById('fTopicWrap').innerHTML = `
+    <div class="topic-badge ${topic.cls}" style="background:${tc}15;border-color:${tc}40">
+      <span>${topic.icon}</span>
+      <select class="topic-sel ${topic.cls}" onchange="changeTopic(this.value)" style="color:${tc}">
+        ${Object.entries(TOPICS).map(([k,v]) => `<option value="${k}" ${k===node.category?'selected':''}>${v.label}</option>`).join('')}
+      </select>
+    </div>`;
+
+  // Related
+  const relEl = document.getElementById('fRelated');
+  relEl.innerHTML = node.related.map(rid => {
+    const rn = getNode(rid);
+    if (!rn) return '';
+    const rc = CAT_COLORS[rn.category] || CAT_COLORS.insight;
+    const short = rn.title.length > 20 ? rn.title.substring(0,18)+'…' : rn.title;
+    return `<div class="rnode" onclick="selectNode('${rid}')">
+      <div class="rdot" style="background:${rc}"></div>${short}</div>`;
+  }).join('') + `<button class="add-rel" onclick="addRelated()">+ Link</button>`;
+
+  // Leverage
+  const sc = node.score;
+  document.getElementById('fLevNum').textContent = sc;
+  document.getElementById('fLevNum').style.color = LEVERAGE_COLORS[sc];
+  document.getElementById('fLevFill').style.width = (sc/5*100)+'%';
+  document.getElementById('fLevFill').style.background = `linear-gradient(90deg,${LEVERAGE_COLORS[sc]},${LEVERAGE_COLORS[sc]}cc)`;
+  document.getElementById('fLevFill').style.boxShadow = `0 0 6px ${LEVERAGE_COLORS[sc]}`;
+  document.getElementById('fLevLbl').textContent = LEVERAGE_LABELS[sc];
+
+  // Status badge
+  const sb = document.getElementById('fStatusBadge');
+  sb.style.color = status.color;
+  document.getElementById('fStatusDot').style.color = status.color;
+  document.getElementById('fStatusTxt').textContent = status.label;
+
+  // Status menu
+  document.getElementById('statusMenu').innerHTML = STATUSES.map(s =>
+    `<div class="sopt" onclick="setStatus('${s.id}')">
+      <div class="sopt-dot" style="background:${s.color};box-shadow:0 0 4px ${s.color}"></div>
+      <span>${s.label}</span><span class="sopt-desc">${s.desc}</span>
+    </div>`).join('');
+
+  // Steps
+  document.getElementById('fSteps').innerHTML = STATUSES.map((s,i) => {
+    const done   = i < stepIdx;
+    const active = i === stepIdx;
+    return `<div class="stp">
+      <div class="stp-dot ${done?'done':active?'active':''}" title="${s.label}"></div>
+      ${i < STATUSES.length-1 ? `<div class="stp-line ${done?'done':''}"></div>` : ''}
+    </div>`;
+  }).join('');
+
+  // Footer
+  document.getElementById('fCreated').textContent = fmtDate(node.createdAt);
+  document.getElementById('fUpdated').textContent = fmtDate(node.updatedAt);
+  document.getElementById('fAiFlag').style.display = node.aiGenerated ? 'flex' : 'none';
+}
+
+/* ════════════════════════════════════════
+   NODE SELECTION (from graph click)
+════════════════════════════════════════ */
+function selectNode(id) {
+  selectedId = id;
+  const node = getNode(id);
+  if (!node) return;
+
+  enrichNode(node);
+  highlightNode(id);
+  renderNodeCard(node);
+  renderNodeList();
+
+  pipe('explore','done');
+  pipe('act','active');
+
+  // Auto-save summary on blur
+  document.getElementById('fSummary').onblur = () => {
+    node.summary = document.getElementById('fSummary').value;
+    node.updatedAt = new Date().toISOString();
+    saveGraph();
+  };
+}
+
+/* ════════════════════════════════════════
+   NODE CARD INTERACTIONS
+════════════════════════════════════════ */
+let titleEditActive = false;
+function toggleTitleEdit() {
+  const el  = document.getElementById('ncTitle');
+  const btn = document.getElementById('ncEditBtn');
+  titleEditActive = !titleEditActive;
+  el.contentEditable = titleEditActive ? 'true' : 'false';
+  btn.textContent = titleEditActive ? '✓' : '✎';
+  btn.style.color = titleEditActive ? 'var(--green)' : '';
+  if (titleEditActive) { el.focus(); selectAllEl(el); }
+  else {
+    const n = getActive(); if(!n) return;
+    n.title = el.textContent.trim();
+    n.updatedAt = new Date().toISOString();
+    renderNodeList(); saveGraph();
+    toast('✓ Title saved');
+  }
+}
+
+function selectAllEl(el) {
+  const r = document.createRange(); r.selectNodeContents(el);
+  const s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+
+function adjustScore(d) {
+  const n = getActive(); if (!n) return;
+  n.score = Math.min(5, Math.max(1, (n.score||3) + d));
+  n.updatedAt = new Date().toISOString();
+  saveGraph(); renderNodeCard(n); renderNodeList();
+}
+
+function changeTopic(val) {
+  const n = getActive(); if (!n) return;
+  n.category = val;
+  n.updatedAt = new Date().toISOString();
+  saveGraph(); renderNodeCard(n); renderNodeList();
+  renderGraph(); // update graph colors
+}
+
+function toggleStatusMenu() { document.getElementById('statusMenu').classList.toggle('open'); }
+
+function setStatus(id) {
+  const n = getActive(); if (!n) return;
+  n.status = id;
+  n.updatedAt = new Date().toISOString();
+  document.getElementById('statusMenu').classList.remove('open');
+  saveGraph(); renderNodeCard(n);
+  toast(`Status → ${STATUSES.find(s=>s.id===id).label}`);
+}
+
+function addRelated() {
+  const n = getActive(); if (!n) return;
+  const others = graphData.nodes.filter(x => x.id !== n.id && !n.related.includes(x.id));
+  if (!others.length) { toast('No other nodes to link'); return; }
+  const pick = prompt(`Link to:\n${others.map((x,i)=>`${i+1}. ${x.title}`).join('\n')}\n\nEnter number:`);
+  if (!pick) return;
+  const idx = parseInt(pick)-1;
+  if (idx >= 0 && idx < others.length) {
+    const target = others[idx];
+    n.related.push(target.id);
+    // add graph link
+    graphData.links.push({ source:n.id, target:target.id, type:'relates_to', strength:1 });
+    n.updatedAt = new Date().toISOString();
+    saveGraph(); renderNodeCard(n); renderGraph(); updateStats();
+    toast(`Linked → ${target.title}`);
+  }
+}
+
+function duplicateActiveNode() {
+  const src = getActive(); if (!src) return;
+  const newId = 'n' + Date.now();
+  const dup = { ...JSON.parse(JSON.stringify(src)), id:newId, title:src.title+' (copy)', createdAt:new Date().toISOString(), updatedAt:new Date().toISOString() };
+  dup.x = (src.x||300) + 60; dup.y = (src.y||300) + 60;
+  graphData.nodes.push(dup);
+  saveGraph(); renderGraph(); renderNodeList(); updateStats(); selectNode(newId);
+  toast('⧉ Duplicated');
+}
+
+function deleteActiveNode() {
+  if (!selectedId) return;
+  if (graphData.nodes.length === 1) { toast('⚠ Cannot delete last node'); return; }
+  const n = getActive();
+  if (!confirm(`Delete "${n?.title}"?`)) return;
+  graphData.nodes = graphData.nodes.filter(x => x.id !== selectedId);
+  graphData.links = graphData.links.filter(l => (l.source?.id||l.source) !== selectedId && (l.target?.id||l.target) !== selectedId);
+  selectedId = graphData.nodes[0]?.id || null;
+  saveGraph();
+  if (g) g.selectAll('*').remove();
+  renderGraph(); renderNodeList(); updateStats();
+  if (selectedId) selectNode(selectedId);
+  else { document.getElementById('nodeEmpty').style.display='flex'; document.getElementById('nodeCardWrap').classList.remove('visible'); }
+  toast('🗑 Deleted');
+}
+
+/* ════════════════════════════════════════
+   AI ACTIONS
+════════════════════════════════════════ */
+async function runAction(type) {
+  const node = getActive(); if (!node) { toast('⚠ Select a node first'); return; }
+  if (currentHub !== 'all' && currentHub !== type) return;
+
+  enrichNode(node);
+
+  const wrap  = document.getElementById('aiOutWrap');
+  const ldr   = document.getElementById('aiLoading');
+  const txt   = document.getElementById('aiText');
+  const lbl   = document.getElementById('aiOutLbl');
+
+  lbl.textContent = `● ${ACTION_LABELS[type]}`;
+  lbl.style.color = ACTION_COLORS[type];
+  wrap.style.borderTopColor = ACTION_COLORS[type]+'40';
+  wrap.querySelector('.ai-out-hdr').style.background = ACTION_COLORS[type]+'08';
+
+  wrap.classList.add('open');
+  ldr.style.display = 'flex';
+  txt.style.display = 'none';
+  txt.textContent = '';
+  wrap.scrollIntoView({ behavior:'smooth', block:'nearest' });
+
+  pipe('act','active');
+  pipe('learn','active');
+
+  try {
+    const nd = { title:node.title, summary:node.summary||node.title, topic:TOPICS[node.category]?.label||node.category, status:node.status, score:node.score };
+    const res = await fetch(getApiEndpoint(), {
+      method:'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        system:`You are the KZ Hub AI — the intelligence layer of Kimiyyar Zahiri, a digital education movement for Northern Nigeria founded by Kriptomech. You deeply understand Arewa culture, Hausa language context, Nigerian fintech ecosystem, Web3/DeFi in emerging markets, Islamic finance principles, and digital adoption challenges in Northern Nigeria. Your outputs are always specific, actionable, and grounded in real Nigerian context.`,
+        messages:[{ role:'user', content:ACTION_PROMPTS[type](nd) }]
+      })
+    });
+    const data = await res.json();
+    const output = data.content?.[0]?.text || 'No response.';
+
+    ldr.style.display = 'none';
+    txt.style.display = 'block';
+    txt.textContent = output;
+
+    // save output + create feedback node
+    if (!node.actionOutputs) node.actionOutputs = {};
+    node.actionOutputs[type] = { text:output, generatedAt:new Date().toISOString() };
+    if (type==='content'||type==='research') node.aiGenerated = true;
+    node.updatedAt = new Date().toISOString();
+
+    if (type==='content'||type==='research') {
+      const nid = 'ao_'+Date.now();
+      graphData.nodes.push({
+        id:nid, title:ACTION_LABELS[type]+': '+node.title.substring(0,25),
+        summary:output.substring(0,200),
+        category: type==='content' ? 'transform' : 'insight',
+        weight:2, score:2, status:'concept',
+        x:(node.x||400)+80, y:(node.y||300)+80,
+        createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
+        aiGenerated:true, related:[node.id]
+      });
+      graphData.links.push({ source:node.id, target:nid, type:'builds_on', strength:1 });
+      renderGraph(); renderNodeList(); updateStats();
+      feedback('Graph updated from action output');
+    }
+
+    actionCount++;
+    localStorage.setItem('kz_ac2', actionCount);
+    updateStats();
+    saveGraph();
+    pipe('act','done');
+    pipe('learn','done');
+    renderNodeCard(node);
+
+  } catch(e) {
+    ldr.style.display = 'none';
+    txt.style.display = 'block';
+    txt.textContent = '⚠ API connection failed. Check Anthropic API key.';
+  }
+}
+
+function closeAiOut() { document.getElementById('aiOutWrap').classList.remove('open'); }
+
+
+/* ════════════════════════════════════════
+   SETTINGS — API KEY / PROXY
+════════════════════════════════════════ */
+let apiMode   = localStorage.getItem('kz_api_mode')   || 'personal';
+let savedKey  = localStorage.getItem('kz_api_key')    || '';
+let savedProxy = localStorage.getItem('kz_proxy_url') || '';
+
+function getApiEndpoint() {
+  if (apiMode === 'community' && savedProxy) {
+    return savedProxy.replace(/\/$/, '') + '/api/chat';
+  }
+  return 'https://api.anthropic.com/v1/messages';
+}
+
+function buildHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  if (apiMode === 'personal' && savedKey) {
+    headers['x-api-key'] = savedKey;
+    headers['anthropic-version'] = '2023-06-01';
+  }
+  return headers;
+}
+
+function openSettings() {
+  // Populate fields
+  document.getElementById('sApiKey').value   = savedKey;
+  document.getElementById('sProxyUrl').value = savedProxy;
+  setApiMode(apiMode, false);
+  updateConnStatus();
+  document.getElementById('settingsModal').classList.add('open');
+}
+function closeSettings()         { document.getElementById('settingsModal').classList.remove('open'); }
+function closeSettingsBg(e)      { if (e.target === e.currentTarget) closeSettings(); }
+
+function setApiMode(mode, save=true) {
+  apiMode = mode;
+  document.getElementById('modePersonal').classList.toggle('mode-active',  mode==='personal');
+  document.getElementById('modeCommunity').classList.toggle('mode-active', mode==='community');
+  document.getElementById('sPersonalFields').style.display  = mode==='personal'  ? 'block' : 'none';
+  document.getElementById('sCommunityFields').style.display = mode==='community' ? 'block' : 'none';
+  document.getElementById('sStatus').style.display = 'none';
+  if (save) localStorage.setItem('kz_api_mode', mode);
+}
+
+function saveSettings() {
+  const key   = document.getElementById('sApiKey').value.trim();
+  const proxy = document.getElementById('sProxyUrl').value.trim();
+  if (apiMode === 'personal' && !key) { showSettingsStatus('⚠ Paste your API key above', 'warn'); return; }
+  if (apiMode === 'community' && !proxy) { showSettingsStatus('⚠ Paste your proxy URL above', 'warn'); return; }
+  savedKey   = key;
+  savedProxy = proxy;
+  localStorage.setItem('kz_api_mode',    apiMode);
+  localStorage.setItem('kz_api_key',     savedKey);
+  localStorage.setItem('kz_proxy_url',   savedProxy);
+  updateConnStatus();
+  closeSettings();
+  toast('✓ Settings saved');
+}
+
+async function testConnection() {
+  const btn = document.getElementById('testBtnTxt');
+  btn.innerHTML = '<span class="spin" style="color:var(--amber)"></span>';
+  showSettingsStatus('Testing connection...', 'tip');
+  try {
+    const endpoint = getApiEndpoint();
+    const headers  = buildHeaders();
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 10,
+        messages:[{ role:'user', content:'Reply: ok' }]
+      })
+    });
+    const data = await res.json();
+    if (data?.content?.[0]?.text || data?.id) {
+      showSettingsStatus('✅ Connection successful! AI features are working.', 'win');
+    } else if (data?.error) {
+      showSettingsStatus('❌ API error: ' + (data.error?.message || JSON.stringify(data.error)), 'warn');
+    } else {
+      showSettingsStatus('⚠ Unexpected response. Check your settings.', 'warn');
+    }
+  } catch(e) {
+    showSettingsStatus('❌ Could not connect. Check the URL or API key.', 'warn');
+  }
+  btn.textContent = '↗ Test';
+}
+
+function showSettingsStatus(msg, type) {
+  const el = document.getElementById('sStatus');
+  el.style.display = 'block';
+  el.textContent = msg;
+  const styles = {
+    tip:  'background:var(--sky-d);border:1px solid rgba(58,168,224,.3);color:var(--sky)',
+    win:  'background:var(--green-d);border:1px solid rgba(40,212,154,.3);color:var(--green)',
+    warn: 'background:var(--red-d);border:1px solid rgba(232,96,96,.3);color:var(--red)',
+  };
+  el.style.cssText = (el.style.cssText||'') + ';' + (styles[type]||styles.tip);
+}
+
+function updateConnStatus() {
+  const dot = document.getElementById('connDot');
+  const msg = document.getElementById('connMsg');
+  const btn = document.getElementById('settingsBtn');
+  if (apiMode === 'personal' && savedKey) {
+    dot.style.background = 'var(--green)';
+    dot.style.boxShadow  = '0 0 6px var(--green)';
+    msg.style.color = 'var(--green)';
+    msg.textContent = '🔑 Personal key configured';
+    btn.style.color = 'var(--green)';
+  } else if (apiMode === 'community' && savedProxy) {
+    dot.style.background = 'var(--sky)';
+    dot.style.boxShadow  = '0 0 6px var(--sky)';
+    msg.style.color = 'var(--sky)';
+    msg.textContent = '🌐 Proxy connected: ' + savedProxy.replace('https://','').split('/')[0];
+    btn.style.color = 'var(--sky)';
+  } else {
+    dot.style.background = 'var(--red)';
+    dot.style.boxShadow  = '0 0 6px var(--red)';
+    msg.style.color = 'var(--ink3)';
+    msg.textContent = 'Not configured — click ⚙ to set up';
+    btn.style.color = 'var(--red)';
+  }
+}
+
+/* ════════════════════════════════════════
+   INGEST PIPELINE
+════════════════════════════════════════ */
+async function processIngest() {
+  const text = document.getElementById('ingestInput').value.trim();
+  if (!text) { toast('Paste some text first!'); return; }
+
+  const btn = document.getElementById('ingestBtn');
+  const btxt = document.getElementById('ingestBtnTxt');
+  btn.disabled = true;
+  btxt.innerHTML = '<span class="spin" style="color:#000"></span> PROCESSING...';
+
+  pipe('ingest','done'); pipe('embed','active');
+  pi(2,'active');
+  await delay(350);
+  pi(2,'done'); pi(3,'active'); pipe('embed','done'); pipe('graph','active');
+
+  try {
+    const existing = graphData.nodes.map(n=>n.title).join(', ');
+    const res = await fetch(getApiEndpoint(), {
+      method:'POST',
+      headers: buildHeaders(),
+      body: JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:1000,
+        system:`You are a semantic knowledge extractor for Kimiyyar Zahiri — a digital education movement for Northern Nigeria. Extract structured knowledge graph data. Return ONLY valid JSON, no markdown:\n{\n  "nodes":[\n    {"id":"slug","title":"Short title (max 5 words)","summary":"2-3 sentence explanation in Northern Nigeria context","category":"tech|trust|transform|insight","tags":["tag1"],"weight":1-5}\n  ],\n  "links":[\n    {"source":"id","target":"id","type":"relates_to|enables|conflicts_with|builds_on|requires","strength":1-3}\n  ]\n}\nExtract 3-7 key concepts. Existing nodes to connect to: ${existing||'none'}.`,
+        messages:[{ role:'user', content:`Extract knowledge graph from:\n\n${text}` }]
+      })
+    });
+    const data  = await res.json();
+    const clean = (data.content?.[0]?.text||'{}').replace(/```json|```/g,'').trim();
+    const ext   = JSON.parse(clean);
+
+    await delay(300);
+    pi(3,'done'); pi(4,'active');
+
+    const W = document.getElementById('graphSvg').clientWidth  || 800;
+    const H = document.getElementById('graphSvg').clientHeight || 500;
+
+    (ext.nodes||[]).forEach(n => {
+      if (!graphData.nodes.find(e=>e.id===n.id)) {
+        if (forceTag) n.category = forceTag;
+        n.x = Math.random()*(W-200)+100; n.y = Math.random()*(H-200)+100;
+        enrichNode(n);
+        graphData.nodes.push(n);
+      }
+    });
+    (ext.links||[]).forEach(l => {
+      const ex = graphData.links.find(e=>(e.source===l.source&&e.target===l.target)||(e.source===l.target&&e.target===l.source));
+      if (!ex) graphData.links.push(l);
+    });
+
+    await delay(300);
+    pi(4,'done'); pi(5,'active');
+    pipe('graph','done'); pipe('explore','active');
+
+    saveGraph(); renderGraph(); renderNodeList(); updateStats();
+
+    await delay(400);
+    pi(5,'done'); pipe('explore','done'); pipe('act','active');
+    document.getElementById('graphEmpty').style.display = 'none';
+    document.getElementById('ingestInput').value = '';
+    forceTag = null;
+    document.querySelectorAll('.mtag').forEach(t=>t.classList.remove('sel'));
+    feedback(`+${(ext.nodes||[]).length} nodes extracted`);
+    toast(`✓ ${(ext.nodes||[]).length} concepts added to graph`);
+
+  } catch(e) {
+    toast('⚠ API error — check connection');
+    ['embed','graph'].forEach(s=>pipe(s,''));
+  } finally {
+    btn.disabled = false;
+    btxt.innerHTML = '⚡ PROCESS → GRAPH';
+  }
+}
+
+/* ════════════════════════════════════════
+   D3 GRAPH
+════════════════════════════════════════ */
+function initSvg() {
+  svg = d3.select('#graphSvg');
+  g   = svg.append('g').attr('class','graph-g');
+  const zoom = d3.zoom().scaleExtent([.15,3])
+    .on('zoom', e => g.attr('transform', e.transform));
+  svg.call(zoom);
+  svg._zoom = zoom;
+}
+
+function renderGraph() {
+  if (!svg) initSvg();
+  g.selectAll('*').remove();
+  const nodes = graphData.nodes.map(n=>({...n}));
+  const links = graphData.links.map(l=>({...l}));
+  if (!nodes.length) return;
+
+  const W = document.getElementById('graphSvg').clientWidth  || 800;
+  const H = document.getElementById('graphSvg').clientHeight || 500;
+  const nodeMap = {}; nodes.forEach(n=>nodeMap[n.id]=n);
+  const resolved = links.filter(l=>nodeMap[l.source]&&nodeMap[l.target])
+    .map(l=>({...l, source:nodeMap[l.source], target:nodeMap[l.target]}));
+
+  if (sim) sim.stop();
+  sim = d3.forceSimulation(nodes)
+    .force('link',   d3.forceLink(resolved).id(d=>d.id).distance(120).strength(.4))
+    .force('charge', d3.forceManyBody().strength(-260))
+    .force('center', d3.forceCenter(W/2, H/2))
+    .force('collide',d3.forceCollide().radius(d=>nR(d)+22));
+
+  const lkColors = { relates_to:'#3aa8e0', enables:'#28d49a', conflicts_with:'#e86060', builds_on:'#d4922a', requires:'#a87ef5' };
+  const lkEl = g.append('g').selectAll('line').data(resolved).enter().append('line')
+    .attr('class','link')
+    .style('stroke', d=>lkColors[d.type]||'#3aa8e0')
+    .style('stroke-dasharray', d=>d.type==='conflicts_with'?'4,3':null);
+
+  const nEl = g.append('g').selectAll('.node').data(nodes).enter().append('g')
+    .attr('class','node').style('cursor','pointer')
+    .call(d3.drag()
+      .on('start',(e,d)=>{ if(!e.active) sim.alphaTarget(.3).restart(); d.fx=d.x; d.fy=d.y; })
+      .on('drag', (e,d)=>{ d.fx=e.x; d.fy=e.y; })
+      .on('end',  (e,d)=>{ if(!e.active) sim.alphaTarget(0); d.fx=null; d.fy=null; })
+    )
+    .on('click', (e,d)=>{ e.stopPropagation(); selectNode(d.id); });
+
+  // glow ring
+  nEl.append('circle').attr('r',d=>nR(d)+9)
+    .style('fill',d=>CAT_COLORS[d.category]||CAT_COLORS.insight).style('opacity',.07);
+  // main circle
+  nEl.append('circle').attr('r',d=>nR(d))
+    .style('fill',d=>CAT_COLORS[d.category]||CAT_COLORS.insight).style('fill-opacity',.14)
+    .style('stroke',d=>CAT_COLORS[d.category]||CAT_COLORS.insight).style('stroke-opacity',.9)
+    .attr('filter','url(#glow)');
+  // label
+  nEl.append('text').attr('dy',d=>nR(d)+13).attr('text-anchor','middle')
+    .style('font-size',d=>d.weight>=4?'11.5px':'10px')
+    .text(d=>d.title.length>18?d.title.substring(0,16)+'…':d.title);
+
+  nEl.style('opacity',0).transition().duration(500).delay((_,i)=>i*50).style('opacity',1);
+
+  sim.on('tick',()=>{
+    lkEl.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    nEl.attr('transform',d=>`translate(${d.x},${d.y})`);
+  });
+
+  if (selectedId) setTimeout(()=>highlightNode(selectedId), 700);
+}
+
+function nR(d) { return 9 + (d.weight||1)*3; }
+
+function highlightNode(id) {
+  if (!g) return;
+  g.selectAll('.node').selectAll('circle:nth-child(2)')
+    .style('stroke-width', d => d.id===id ? 3 : 1.8)
+    .style('fill-opacity', d => d.id===id ? .35 : .14);
+  g.selectAll('.link')
+    .style('stroke-opacity', d => (d.source.id===id||d.target.id===id) ? .9 : .15)
+    .style('stroke-width',   d => (d.source.id===id||d.target.id===id) ? 2.5 : 1.5);
+}
+
+function resetZoom() {
+  if (!svg) return;
+  const W = document.getElementById('graphSvg').clientWidth  || 800;
+  const H = document.getElementById('graphSvg').clientHeight || 500;
+  svg.transition().duration(450).call(svg._zoom.transform,
+    d3.zoomIdentity.translate(W/2,H/2).scale(.85).translate(-W/2,-H/2));
+}
+
+function setLayout(type) {
+  document.getElementById('tbForce').classList.toggle('on',  type==='force');
+  document.getElementById('tbRadial').classList.toggle('on', type==='radial');
+  if (!sim) return;
+  const W = document.getElementById('graphSvg').clientWidth||800;
+  const H = document.getElementById('graphSvg').clientHeight||500;
+  if (type==='radial')
+    sim.force('center', d3.forceRadial(Math.min(W,H)/3, W/2, H/2).strength(.8));
+  else
+    sim.force('center', d3.forceCenter(W/2, H/2));
+  sim.alpha(.5).restart();
+}
+
+/* ════════════════════════════════════════
+   NEW NODE MODAL
+════════════════════════════════════════ */
+function openNewModal()      { document.getElementById('newModal').classList.add('open'); }
+function closeModal()         { document.getElementById('newModal').classList.remove('open'); }
+function closeMBg(e)         { if(e.target===e.currentTarget) closeModal(); }
+
+function createManualNode() {
+  const title = document.getElementById('mTitle').value.trim();
+  if (!title) { toast('⚠ Title is required'); return; }
+  const W = document.getElementById('graphSvg').clientWidth||800;
+  const H = document.getElementById('graphSvg').clientHeight||500;
+  const n = {
+    id:'n'+Date.now(), title,
+    summary: document.getElementById('mSummary').value.trim() || title,
+    category: document.getElementById('mTopic').value,
+    tags:[], weight:parseInt(document.getElementById('mScore').value)||3,
+    score:parseInt(document.getElementById('mScore').value)||3,
+    status:'concept', related:[],
+    x:Math.random()*(W-200)+100, y:Math.random()*(H-200)+100,
+    createdAt:new Date().toISOString(), updatedAt:new Date().toISOString(),
+    aiGenerated:false
+  };
+  graphData.nodes.push(n);
+  saveGraph(); renderGraph(); renderNodeList(); updateStats(); closeModal(); selectNode(n.id);
+  ['mTitle','mSummary'].forEach(id => document.getElementById(id).value='');
+  document.getElementById('graphEmpty').style.display='none';
+  toast(`✦ Node created: ${title}`);
+}
+
+/* ════════════════════════════════════════
+   HUB + GRAPH CONTROLS
+════════════════════════════════════════ */
+function setHub(el, hub) {
+  document.querySelectorAll('.hub .hbtn').forEach(b=>b.classList.remove('on'));
+  el.classList.add('on'); currentHub = hub;
+}
+
+function clearGraph() {
+  if (!confirm('Clear the entire knowledge graph?')) return;
+  graphData = { nodes:[], links:[] };
+  saveGraph(); if(g) g.selectAll('*').remove();
+  document.getElementById('graphEmpty').style.display='flex';
+  document.getElementById('nodeEmpty').style.display='flex';
+  document.getElementById('nodeCardWrap').classList.remove('visible');
+  selectedId = null;
+  renderNodeList(); updateStats();
+  ['ingest','embed','graph','explore','act','learn'].forEach(s=>pipe(s,s==='ingest'?'done':''));
+  [1,2,3,4,5].forEach(n=>pi(n,n===1?'done':''));
+  feedback('Graph cleared');
+}
+
+function exportGraph() {
+  const b = new Blob([JSON.stringify(graphData,null,2)],{type:'application/json'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(b);
+  a.download='kz-knowledge-graph.json'; a.click();
+}
+
+function toggleTag(el, tag) {
+  document.querySelectorAll('.mtag').forEach(t=>t.classList.remove('sel'));
+  forceTag = forceTag===tag ? null : tag;
+  if (forceTag) el.classList.add('sel');
+}
+
+/* ════════════════════════════════════════
+   SEED DATA
+════════════════════════════════════════ */
+function loadSeed() {
+  if (graphData.nodes.length>0 && !confirm('Replace current graph with seed data?')) return;
+  const W = document.getElementById('graphSvg').clientWidth||800;
+  const H = document.getElementById('graphSvg').clientHeight||500;
+  graphData = {
+    nodes:[
+      { id:'n1', title:'Blockchain in Nigeria',         summary:'Decentralized ledger technology adapted for Northern Nigerian contexts — micro-loans, supply chain, identity.',      category:'tech',      tags:['blockchain','fintech'],     weight:5, score:5, status:'research',  aiGenerated:false },
+      { id:'n2', title:'Hausa Tech Education',          summary:'Building the first Hausa-language knowledge base for digital tools, crypto, and AI.',                               category:'transform', tags:['hausa','education'],        weight:4, score:4, status:'prototype', aiGenerated:false },
+      { id:'n3', title:'Crypto Trust Deficit',          summary:'Post-MMM scam trauma creates resistance to digital finance in Arewa communities.',                                  category:'trust',     tags:['trust','psychology'],       weight:4, score:4, status:'research',  aiGenerated:false },
+      { id:'n4', title:'Arewa Digital Youth',           summary:'Young Northern Nigerians 18-35 seeking economic opportunity through digital channels.',                             category:'insight',   tags:['youth','arewa'],            weight:5, score:5, status:'growth',    aiGenerated:false },
+      { id:'n5', title:'DeFi for Agriculture',          summary:'Smart contract micro-loans for Kano/Kaduna farmers bypassing traditional bank gatekeepers.',                        category:'tech',      tags:['defi','agriculture'],       weight:3, score:3, status:'concept',   aiGenerated:false },
+      { id:'n6', title:'AI Tools for Solo Builders',   summary:'100x leverage tools for solo creators: Claude, Perplexity, automation workflows.',                                  category:'tech',      tags:['ai','automation'],          weight:4, score:4, status:'prototype', aiGenerated:false },
+      { id:'n7', title:'Kimiyyar Zahiri Brand',         summary:'Cultural bridge brand rooted in Hausa intellectual tradition, pointing to Africa\'s digital future.',              category:'transform', tags:['brand','identity'],         weight:5, score:5, status:'growth',    aiGenerated:false },
+      { id:'n8', title:'Islamic Finance + DeFi',       summary:'Halal financial principles align well with DeFi transparency and smart contracts.',                                  category:'insight',   tags:['halal','islamic','finance'],weight:3, score:3, status:'research',  aiGenerated:false },
+      { id:'n9', title:'3-Layer Content Engine',        summary:'Cornerstone → Derivative → Reactive content system for maximum reach with minimal effort.',                        category:'transform', tags:['content','strategy'],       weight:3, score:3, status:'prototype', aiGenerated:false },
+    ],
+    links:[
+      { source:'n1', target:'n5',  type:'enables',     strength:2 },
+      { source:'n1', target:'n3',  type:'relates_to',  strength:2 },
+      { source:'n3', target:'n4',  type:'relates_to',  strength:3 },
+      { source:'n2', target:'n4',  type:'enables',     strength:3 },
+      { source:'n2', target:'n7',  type:'builds_on',   strength:2 },
+      { source:'n6', target:'n9',  type:'enables',     strength:2 },
+      { source:'n8', target:'n5',  type:'relates_to',  strength:2 },
+      { source:'n7', target:'n9',  type:'requires',    strength:2 },
+      { source:'n4', target:'n7',  type:'relates_to',  strength:3 },
+      { source:'n8', target:'n3',  type:'enables',     strength:2 },
+    ]
+  };
+  graphData.nodes.forEach(n => {
+    n.x = Math.random()*(W-200)+100; n.y = Math.random()*(H-200)+100;
+    enrichNode(n);
+  });
+  saveGraph(); renderGraph(); renderNodeList(); updateStats();
+  document.getElementById('graphEmpty').style.display='none';
+  [1,2,3,4,5].forEach(n=>pi(n,'done'));
+  ['ingest','embed','graph','explore','act'].forEach(s=>pipe(s,'done'));
+  feedback('Seed data loaded — click any node to explore');
+  toast('✓ Seed knowledge graph loaded');
+  setTimeout(()=>selectNode('n4'), 600);
+}
+
+/* ════════════════════════════════════════
+   STAR FIELD
+════════════════════════════════════════ */
+function buildStars() {
+  const sf = document.getElementById('starField');
+  for (let i=0; i<70; i++) {
+    const s = document.createElement('div');
+    const sz = Math.random()*2+.5;
+    s.style.cssText = `position:absolute;width:${sz}px;height:${sz}px;background:rgba(226,216,200,${Math.random()*.28+.04});border-radius:50%;top:${Math.random()*100}%;left:${Math.random()*100}%;animation:tw${i%3} ${Math.random()*4+3}s infinite ${Math.random()*5}s`;
+    sf.appendChild(s);
+  }
+  const st = document.createElement('style');
+  st.textContent = '@keyframes tw0{0%,100%{opacity:1}50%{opacity:.1}}@keyframes tw1{0%,100%{opacity:.7}50%{opacity:.05}}@keyframes tw2{0%,100%{opacity:.5}60%{opacity:.2}}';
+  document.head.appendChild(st);
+}
+
+/* ════════════════════════════════════════
+   UTILS
+════════════════════════════════════════ */
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d=new Date(iso), now=new Date(), df=now-d;
+  if (df<60000) return 'just now';
+  if (df<3600000) return Math.floor(df/60000)+'m ago';
+  if (df<86400000) return Math.floor(df/3600000)+'h ago';
+  return d.toLocaleDateString('en-NG',{day:'numeric',month:'short'});
+}
+
+function delay(ms) { return new Promise(r=>setTimeout(r,ms)); }
+
+function toast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2600);
+}
+
+/* ════════════════════════════════════════
+   KEYBOARD SHORTCUTS
+════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  const active = document.activeElement;
+  const isInput = active.tagName==='INPUT'||active.tagName==='TEXTAREA'||active.contentEditable==='true';
+  if (e.key==='Escape') { closeModal(); closeSettings(); closeAiOut(); document.getElementById('statusMenu').classList.remove('open'); }
+  if (!isInput) {
+    if ((e.metaKey||e.ctrlKey) && e.key==='s') { e.preventDefault(); const n=getActive(); if(n){n.summary=document.getElementById('fSummary').value;n.updatedAt=new Date().toISOString();saveGraph();toast('✓ Saved');} }
+    const map={r:'research',l:'learn',a:'automate',c:'content',t:'track'};
+    if (map[e.key.toLowerCase()]) { e.preventDefault(); runAction(map[e.key.toLowerCase()]); }
+    if ((e.metaKey||e.ctrlKey)&&e.key==='Enter') processIngest();
+  }
+});
+
+// Close status menu on outside click
+document.addEventListener('click', e => {
+  if (!document.getElementById('statusRing')?.contains(e.target))
+    document.getElementById('statusMenu')?.classList.remove('open');
+});
+
+/* ════════════════════════════════════════
+   INIT
+════════════════════════════════════════ */
+window.addEventListener('DOMContentLoaded', () => {
+  buildStars();
+  initSvg();
+  updateConnStatus();
+  graphData.nodes.forEach(n => enrichNode(n));
+  updateStats();
+  renderNodeList();
+  if (graphData.nodes.length > 0) {
+    renderGraph();
+    document.getElementById('graphEmpty').style.display = 'none';
+    [1,2,3,4,5].forEach(n=>pi(n,'done'));
+    ['ingest','embed','graph','explore'].forEach(s=>pipe(s,'done'));
+    // restore last selected node
+    const firstId = graphData.nodes[0].id;
+    setTimeout(()=>selectNode(firstId), 400);
+  }
+});
+
+window.addEventListener('resize', ()=>{ if(graphData.nodes.length) renderGraph(); });
+</script>
+</body>
+</html>
